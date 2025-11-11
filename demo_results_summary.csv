@@ -1,3 +1,3 @@
-Model,Accuracy,Training_Samples,Test_Samples
-Random Forest,0.7012507057676185,5000,175341
-Logistic Regression,0.6817230425285586,5000,175341
+version https://git-lfs.github.com/spec/v1
+oid sha256:17711a7824dbb4988089530b4f6d03f11054b38a033a6c5656bf3a7d6505d9f6
+size 144
