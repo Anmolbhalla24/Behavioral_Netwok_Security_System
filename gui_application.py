@@ -25,6 +25,10 @@ class NetworkSecurityGUI:
         # Initialize components
         self.preprocessor = None
         self.models = None
+        self.X_train = None
+        self.y_train = None
+        self.X_test = None
+        self.y_test = None
         self.visualizer = NetworkSecurityVisualizer()
         self.real_time_analyzer = None
         
@@ -255,27 +259,27 @@ class NetworkSecurityGUI:
                 # Initialize preprocessor
                 self.preprocessor = DataPreprocessor()
                 
-                # Load data
-                train_data = self.preprocessor.load_data(self.train_path.get())
-                test_data = self.preprocessor.load_data(self.test_path.get())
-                
-                # Preprocess data
-                X_train, y_train = self.preprocessor.preprocess_train_data(train_data)
-                X_test, y_test = self.preprocessor.preprocess_test_data(test_data)
+                # Preprocess data using file paths
+                self.X_train, self.y_train = self.preprocessor.preprocess_training_data(self.train_path.get())
+                self.X_test, self.y_test = self.preprocessor.preprocess_test_data(self.test_path.get())
+
+                # Save preprocessor for later reuse
+                try:
+                    self.preprocessor.save_preprocessor('models/preprocessor.pkl')
+                except Exception:
+                    pass
                 
                 # Display information
                 info = f"""
 Data Loading and Preprocessing Complete!
 
 Training Data:
-- Shape: {train_data.shape}
-- Features: {X_train.shape[1]}
-- Samples: {X_train.shape[0]}
+- Features: {self.X_train.shape[1]}
+- Samples: {self.X_train.shape[0]}
 
 Testing Data:
-- Shape: {test_data.shape}
-- Features: {X_test.shape[1]}
-- Samples: {X_test.shape[0]}
+- Features: {self.X_test.shape[1]}
+- Samples: {self.X_test.shape[0]}
 
 Feature Engineering Applied:
 - Total bytes, packets per second, byte ratios
@@ -303,7 +307,7 @@ Data preprocessing pipeline saved to 'models/preprocessor.pkl'
         """Train machine learning models"""
         def train():
             try:
-                if not self.preprocessor:
+                if not self.preprocessor or self.X_train is None or self.y_train is None:
                     messagebox.showerror("Error", "Please load and preprocess data first.")
                     return
                 
@@ -321,7 +325,7 @@ Data preprocessing pipeline saved to 'models/preprocessor.pkl'
                     return
                 
                 # Train models
-                results = self.models.train_all_models(X_train, y_train, selected)
+                results = self.models.train_all_models(self.X_train, self.y_train, selected)
                 
                 # Display results
                 results_text = "Model Training Results:\n\n"
@@ -478,6 +482,9 @@ Data preprocessing pipeline saved to 'models/preprocessor.pkl'
             if not self.models:
                 messagebox.showerror("Error", "Please train models first.")
                 return
+            if self.X_test is None or self.y_test is None:
+                messagebox.showerror("Error", "Please load and preprocess test data first.")
+                return
             
             # Clear previous visualization
             if self.viz_canvas:
@@ -491,10 +498,10 @@ Data preprocessing pipeline saved to 'models/preprocessor.pkl'
             for i, (model_name, model) in enumerate(self.models.models.items()):
                 if i < len(axes):
                     # Get predictions
-                    y_pred = model.predict(X_test)
+                    y_pred = model.predict(self.X_test)
                     
                     # Plot confusion matrix
-                    self.visualizer.plot_confusion_matrix(y_test, y_pred, 
+                    self.visualizer.plot_confusion_matrix(self.y_test, y_pred, 
                                                         model_name, axes[i])
             
             # Create canvas
@@ -511,6 +518,9 @@ Data preprocessing pipeline saved to 'models/preprocessor.pkl'
             if not self.models:
                 messagebox.showerror("Error", "Please train models first.")
                 return
+            if self.X_test is None or self.y_test is None:
+                messagebox.showerror("Error", "Please load and preprocess test data first.")
+                return
             
             # Clear previous visualization
             if self.viz_canvas:
@@ -523,11 +533,14 @@ Data preprocessing pipeline saved to 'models/preprocessor.pkl'
             for model_name, model in self.models.models.items():
                 # Get predictions
                 if hasattr(model, 'predict_proba'):
-                    y_pred_proba = model.predict_proba(X_test)[:, 1]
+                    y_pred_proba = model.predict_proba(self.X_test)[:, 1]
                 else:
-                    y_pred_proba = model.decision_function(X_test)
+                    # Map decision scores to [0,1] for plotting only
+                    raw = model.decision_function(self.X_test)
+                    mn, mx = raw.min(), raw.max()
+                    y_pred_proba = (raw - mn) / (mx - mn + 1e-12)
                 
-                self.visualizer.plot_roc_curve(y_test, y_pred_proba, model_name, ax)
+                self.visualizer.plot_roc_curve(self.y_test, y_pred_proba, model_name, ax)
             
             ax.legend()
             
@@ -559,7 +572,7 @@ Data preprocessing pipeline saved to 'models/preprocessor.pkl'
                 if hasattr(rf_model, 'feature_importances_'):
                     self.visualizer.plot_feature_importance(
                         rf_model.feature_importances_, 
-                        self.preprocessor.selected_features if self.preprocessor else None,
+                        self.preprocessor.feature_names if self.preprocessor else None,
                         ax
                     )
             
@@ -582,7 +595,7 @@ Data preprocessing pipeline saved to 'models/preprocessor.pkl'
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
             
             # Plot attack distribution
-            if hasattr(self, 'y_train'):
+            if self.y_train is not None:
                 self.visualizer.plot_attack_distribution(self.y_train, ax1)
             
             # Plot model comparison
